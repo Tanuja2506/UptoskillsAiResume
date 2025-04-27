@@ -1,1078 +1,981 @@
-import React, { useState, useEffect, useRef } from "react";
-import {
-  enhanceResumeSection,
-  downloadResumePDF,
-  fetchResume,
-  saveResume,
-} from "../utils/api";
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios"; // Add axios for HTTP requests
+import { Download, Upload, Share, Settings, Edit, Plus, Save, Trash2, Bot, ArrowUp, ArrowDown, Mail } from "lucide-react";
 
-// Sidebar component (unchanged, already responsive)
-const Sidebar = ({ onSave, onEnhance, onDownload }) => {
-  const [showSidebar, setShowSidebar] = useState(false);
+export default function Temp5() {
+  const resumeRef = useRef(null);
+  const [sections, setSections] = useState(["header", "summary", "experience", "achievements", "projects", "education", "skills"]);
+  const [isRearrangeMode, setIsRearrangeMode] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [editingSections, setEditingSections] = useState({});
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // Unified loading state for AI and download
+  const [showEnhancementOptions, setShowEnhancementOptions] = useState(false);
 
+  const [editableContent, setEditableContent] = useState({
+    header: {
+      name: "YOUR NAME",
+      title: "Full Stack Developer",
+      contact: {
+        phone: "+1-555-555-5555",
+        email: "xyz@gmail.com",
+        location: "San Francisco, CA"
+      }
+    },
+    summary: "Experienced Full Stack Developer with over 5 years of experience in designing and implementing web applications. Skilled in both front-end and back-end technologies with a proven track record of delivering scalable solutions.",
+    experience: [{
+      id: 1,
+      title: "Senior Full Stack Developer",
+      company: "Boyle",
+      period: "2018 - Present",
+      description: "Boyle is an international Technology and Management Consulting Group with a rapid-pace development and innovative solutions for demanding projects.",
+      achievements: [
+        "Spearheaded and built Agile team of 7 full-stack developers",
+        "Developed channel database architecture using SQL procedures and triggers for 10 different applications"
+      ]
+    }],
+    achievements: [{
+      id: 1,
+      title: "AWS Certification",
+      description: "Achieved AWS Certified Solutions Architect certification",
+      year: "2023"
+    }],
+    projects: [{
+      id: 1,
+      title: "Data Lake Implementation",
+      description: "Led the design and implementation of a comprehensive data lake solution on AWS S3, enhancing data accessibility and analytics capabilities",
+      technologies: "AWS S3, Glue, Athena, Python",
+      year: "2023"
+    }],
+    education: [{
+      id: 1,
+      school: "Stanford University",
+      degree: "M.S. in Computer Science",
+      period: "2008 - 2009"
+    }],
+    skills: {
+      clientSide: "HTML • CSS • JS • Angular • React • Vue • Redux • RecurrsJS",
+      serverSide: "Python • Node.JS • SQL ",
+      devOps: "Shell • Mysql "
+    }
+  });
+
+  // Load resume data on mount (optional, based on email)
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 1024) {
-        setShowSidebar(true);
-      } else {
-        setShowSidebar(false);
+    const loadSavedResume = async () => {
+      if (editableContent.header.contact.email === "xyz@gmail.com") return; // Skip if placeholder
+      try {
+        const response = await axios.get('http://localhost:5000/api/temp5/load', {
+          params: { email: editableContent.header.contact.email },
+        });
+        if (response.data?.data) {
+          setEditableContent(response.data.data);
+        }
+      } catch (error) {
+        console.error("Failed to load saved resume:", error);
       }
     };
-
-    handleResize(); // Initial call
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    loadSavedResume();
   }, []);
 
-  const toggleSidebar = () => {
-    setShowSidebar(!showSidebar);
+  const downloadPdf = async () => {
+    try {
+      setIsLoading(true);
+      const response = await axios.post(
+        "http://localhost:5000/api/temp5/generate-pdf",
+        { resumeData: editableContent },
+        {
+          responseType: "blob",
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+
+      if (!response || !response.data || !(response.data instanceof Blob)) {
+        throw new Error("Invalid PDF response");
+      }
+
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `resume_${Date.now()}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        setIsLoading(false);
+      }, 100);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("PDF generation failed. Please check your resume data.");
+      setIsLoading(false);
+    }
   };
 
-  return (
-    <div className="flex">
-      <button
-        className="fixed top-4 left-4 z-50 p-2 bg-gray-900 text-white rounded-md lg:hidden"
-        onClick={toggleSidebar}
-      >
-        ≡
-      </button>
+  const handleAIEnhancement = async () => {
+    if (!editableContent._id) {
+      await saveResume();
+      alert("Resume saved. Click AI Assistant again to enhance.");
+      return;
+    }
+    setIsLoading(true);
+    setShowEnhancementOptions(true);
+    setIsLoading(false);
+  };
 
-      {showSidebar && window.innerWidth < 1024 && (
-        <div
-          className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden"
-          onClick={toggleSidebar}
-        ></div>
-      )}
+  const enhanceSingleField = async (field) => {
+    if (!editableContent._id) {
+      alert("Please save your resume before enhancing a field.");
+      return;
+    }
+    try {
+      setIsLoading(true);
+      const response = await axios.post('http://localhost:5000/api/temp5/enhanceField', {
+        resumeId: editableContent._id,
+        field,
+      });
+      if (response.data?.data) {
+        setEditableContent(response.data.data);
+        alert(`${field} enhanced successfully!`);
+      }
+    } catch (error) {
+      console.error(`Error enhancing ${field}:`, error);
+      alert(`Failed to enhance ${field}.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      <div
-        className={`fixed top-0 left-0 h-full w-64 bg-gray-900 text-white p-4 transition-transform duration-300 ease-in-out z-50 ${
-          showSidebar ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0`}
-      >
-        <button
-          className="absolute top-3 right-3 text-white lg:hidden"
-          onClick={toggleSidebar}
-        >
-          ✕
-        </button>
+  const saveResume = async () => {
+    try {
+      const response = await axios.post("http://localhost:5000/api/temp5/save", { resumeData: editableContent });
+      if (response.data?.data?._id) {
+        setEditableContent(prev => ({ ...prev, _id: response.data.data._id }));
+        alert("Resume saved successfully!");
+      }
+    } catch (error) {
+      console.error("Error saving resume:", error);
+      alert("Failed to save resume.");
+    }
+  };
 
-        <div className="flex flex-col h-full space-y-3">
-          <h2 className="text-lg font-bold hidden lg:block">Resume Tools</h2>
-          <NavItem label="Save Resume" onClick={onSave} />
-          <NavItem label="Enhance Profile" onClick={() => onEnhance("profile")} />
-          <NavItem label="Enhance Experience" onClick={() => onEnhance("experience")} />
-          <NavItem label="Enhance Projects" onClick={() => onEnhance("projects")} />
-          <NavItem label="Download PDF" onClick={onDownload} />
-        </div>
-      </div>
+  const moveSection = (index, direction) => {
+    const newSections = [...sections];
+    if (direction === "up" && index > 0) {
+      [newSections[index], newSections[index - 1]] = [newSections[index - 1], newSections[index]];
+    } else if (direction === "down" && index < sections.length - 1) {
+      [newSections[index], newSections[index + 1]] = [newSections[index + 1], newSections[index]];
+    }
+    setSections(newSections);
+  };
+
+  const handleShare = () => {
+    const shareText = "Check out my resume!";
+    const resumeUrl = window.location.href;
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText + " " + resumeUrl)}`;
+    const emailUrl = `mailto:?subject=My Resume&body=${encodeURIComponent(shareText + " " + resumeUrl)}`;
+    window.open(whatsappUrl, "_blank");
+    window.open(emailUrl, "_blank");
+  };
+
+  const handleEdit = (section) => {
+    setEditingSections({ ...editingSections, [section]: true });
+  };
+
+  const handleSave = (section) => {
+    setEditingSections({ ...editingSections, [section]: false });
+    setShowSuccessMessage(true);
+    setTimeout(() => setShowSuccessMessage(false), 3000);
+  };
+
+  const handleDelete = (section, id = null, field = null) => {
+    if (window.confirm('Are you sure you want to delete this item?')) {
+      if (id !== null) {
+        const updatedContent = editableContent[section].filter(item => item.id !== id);
+        setEditableContent({ ...editableContent, [section]: updatedContent });
+      } else if (field !== null && section === "skills") {
+        const updatedSkills = { ...editableContent.skills };
+        delete updatedSkills[field];
+        setEditableContent({ ...editableContent, skills: updatedSkills });
+      } else {
+        if (section === "header") {
+          setEditableContent({ ...editableContent, header: null });
+        } else if (section === "skills") {
+          setEditableContent({ ...editableContent, skills: null });
+        } else if (section === "summary") {
+          setEditableContent({ ...editableContent, summary: "" });
+        } else {
+          setEditableContent({ ...editableContent, [section]: [] });
+        }
+      }
+    }
+  };
+
+  const handleAdd = (section) => {
+    if (section === 'experience') {
+      const newExperience = {
+        id: Date.now(),
+        title: "New Position",
+        company: "Company Name",
+        period: "Start - End",
+        description: "Description here",
+        achievements: ["New achievement"]
+      };
+      setEditableContent({
+        ...editableContent,
+        experience: [...editableContent.experience, newExperience]
+      });
+    } else if (section === 'education') {
+      const newEducation = {
+        id: Date.now(),
+        school: "New School",
+        degree: "Degree",
+        period: "Year - Year"
+      };
+      setEditableContent({
+        ...editableContent,
+        education: [...editableContent.education, newEducation]
+      });
+    }
+    handleEdit(section);
+  };
+
+  const handleAddAchievement = () => {
+    const newAchievement = {
+      id: Date.now(),
+      title: "New Achievement",
+      description: "Description here",
+      year: "Year"
+    };
+    setEditableContent({
+      ...editableContent,
+      achievements: [...editableContent.achievements, newAchievement]
+    });
+    handleEdit('achievements');
+  };
+
+  const handleAddProject = () => {
+    const newProject = {
+      id: Date.now(),
+      title: "New Project",
+      description: "Description here",
+      technologies: "Technologies used",
+      year: "Year"
+    };
+    setEditableContent({
+      ...editableContent,
+      projects: [...editableContent.projects, newProject]
+    });
+    handleEdit('projects');
+  };
+
+  const handleContentChange = (section, value, field = null, id = null) => {
+    if (section === 'header') {
+      if (!editableContent.header) return;
+      if (field in editableContent.header) {
+        setEditableContent({
+          ...editableContent,
+          header: { ...editableContent.header, [field]: value }
+        });
+      } else {
+        setEditableContent({
+          ...editableContent,
+          header: {
+            ...editableContent.header,
+            contact: { ...editableContent.header.contact, [field]: value }
+          }
+        });
+      }
+    } else if (section === 'summary') {
+      setEditableContent({
+        ...editableContent,
+        summary: value
+      });
+    } else if (id !== null) {
+      const updatedContent = editableContent[section].map(item => {
+        if (item.id === id) {
+          return { ...item, [field]: value };
+        }
+        return item;
+      });
+      setEditableContent({ ...editableContent, [section]: updatedContent });
+    } else {
+      if (section === 'skills') {
+        setEditableContent({
+          ...editableContent,
+          skills: { ...editableContent.skills, [field]: value }
+        });
+      }
+    }
+  };
+
+  const SuccessMessage = () => (
+    <div className="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg">
+      Changes saved successfully!
     </div>
   );
-};
 
-const NavItem = ({ label, onClick }) => (
-  <div
-    className="flex items-center p-3 rounded-lg cursor-pointer transition duration-200 hover:bg-gray-700"
-    onClick={onClick}
-  >
-    <span className="ml-2 whitespace-normal">{label}</span>
-  </div>
-);
-
-export default function Temp3() {
-  const resumeRef = useRef(null);
-
-  const handleEnhance = async (section) => {
-    console.log(`handleEnhance called for: ${section}`);
-    setLoadingSection(section);
-
-    let requestData;
-
-    if (section === "profile") {
-      const experienceTitle =
-        experiences.length > 0 ? experiences[0].title : "Professional";
-      const experienceYears =
-        new Date().getFullYear() -
-        parseInt(experiences[0]?.duration.split(" - ")[0] || "2020");
-      const formattedSkills = skills.join(", ");
-      const educationDetails = education
-        .map((edu) => `${edu.degree} from ${edu.institution}`)
-        .join("; ");
-
-      requestData = {
-        section: "profile",
-        content: profileSectionText,
-        experienceTitle,
-        experienceYears,
-        skills: formattedSkills,
-        education: educationDetails,
-      };
-    } else if (section === "experience") {
-      requestData = {
-        section: "experience",
-        content: experiences.map((exp) => ({
-          id: exp.id,
-          bullets: exp.bullets.join("\n").replace(/\n\s*\n/g, "\n"),
-        })),
-      };
-    } else if (section === "projects") {
-      requestData = {
-        section: "projects",
-        content: projects.map((proj) => ({
-          id: proj.id,
-          name: proj.title,
-          description: proj.description,
-        })),
-      };
-    } else {
-      console.log("No section selected");
-    }
-
-    console.log("Sending request to AI:", requestData);
-
-    try {
-      const enhancedData = await enhanceResumeSection(
-        requestData.section,
-        requestData
-      );
-
-      console.log("AI Response:", enhancedData);
-
-      if (section === "profile") {
-        setProfileSectionText(enhancedData);
-      } else if (section === "experience" && Array.isArray(enhancedData)) {
-        const updatedExperiences = experiences.map((exp) => {
-          const enhancedExp = enhancedData.find((e) => e.id === exp.id);
-          return enhancedExp && enhancedExp.bullets
-            ? {
-                ...exp,
-                bullets: Array.isArray(enhancedExp.bullets)
-                  ? enhancedExp.bullets
-                  : enhancedExp.bullets.split("\n"),
-              }
-            : exp;
-        });
-        setExperiences(updatedExperiences);
-      } else if (section === "projects") {
-        const updatedProjects = projects.map((proj) => {
-          const enhancedProj = enhancedData.find((e) => e.id === proj.id);
-          return enhancedProj
-            ? { ...proj, description: enhancedProj.description.trim() }
-            : proj;
-        });
-        setProjects(updatedProjects);
-      } else {
-        console.error("Unexpected AI response:", enhancedData);
-      }
-    } catch (error) {
-      console.error("Error enhancing:", error);
-    }
-
-    setLoadingSection(null);
-  };
-
-  const handleSaveResume = async () => {
-    const resumeData = {
-      profileSectionText,
-      experiences: experiences.map((exp) => ({ ...exp, id: String(exp.id) })),
-      projects: projects.map((proj) => ({ ...proj, id: String(proj.id) })),
-      education: education.map((edu) => ({ ...edu, id: String(edu.id) })),
-      certifications: certifications.map((cert) => ({
-        ...cert,
-        id: String(cert.id),
-      })),
-      skills,
-    };
-    await saveResume(resumeData);
-    alert("Resume saved successfully!");
-  };
-
-  const handleDownloadPDF = async () => {
-    console.log("📤 Updating content before PDF download...");
-    const clientURL = "http://localhost:5173/printable-resume";
-    console.log("📤 Sending request to generate PDF for:", clientURL);
-
-    const pdfUrl = await downloadResumePDF(clientURL);
-
-    if (pdfUrl) {
-      const a = document.createElement("a");
-      a.href = pdfUrl;
-      a.download = "resume.pdf";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      alert("Failed to generate PDF.");
-    }
-  };
-
-  const [hideUI] = useState(false);
-  const [loadingSection, setLoadingSection] = useState(null);
-  const [hideButtons, setHideButtons] = useState(false);
-
-  const [name, setName] = useState("ISABELLE TODD");
-  const [contact, setContact] = useState(
-    "91+ 6369411212 | ✉ isabelle@gmail.com | 📍 New York City, NY | 🔗 LinkedIn"
-  );
-  const [headerProfile, setHeaderProfile] = useState(
-    "I solve problems and help people overcome obstacles."
-  );
-  const [profileSectionText, setProfileSectionText] = useState(
-    "Result-oriented project team leader with 5 years of experience in project and product management, developing and managing fast-growing startups."
+  const SectionButtons = ({ section }) => (
+    <div className="control-buttons flex gap-2 absolute right-0 top-0 bg-white/90 p-2 rounded-lg shadow-md">
+      {editingSections[section] ? (
+        <button
+          onClick={() => handleSave(section)}
+          className="text-green-600 hover:text-green-800"
+          title="Save changes"
+        >
+          <Save size={18} />
+        </button>
+      ) : (
+        <>
+          <button
+            onClick={() => handleEdit(section)}
+            className="text-blue-600 hover:text-blue-800"
+            title="Edit section"
+          >
+            <Edit size={18} />
+          </button>
+          {(section === 'experience' || section === 'education' || section === 'achievements' || section === 'projects') && (
+            <button
+              onClick={() => section === 'experience' ? handleAdd(section) : 
+                            section === 'education' ? handleAdd(section) : 
+                            section === 'achievements' ? handleAddAchievement() : 
+                            handleAddProject()}
+              className="text-green-600 hover:text-green-800"
+              title="Add new item"
+            >
+              <Plus size={18} />
+            </button>
+          )}
+          <button
+            onClick={() => handleDelete(section)}
+            className="text-red-600 hover:text-red-800"
+            title="Delete section"
+          >
+            <Trash2 size={18} />
+          </button>
+        </>
+      )}
+    </div>
   );
 
-  const [experiences, setExperiences] = useState([
-    {
-      id: "1",
-      title: "Software Engineer",
-      company: "Google",
-      duration: "2020 - Present",
-      bullets: ["Developed scalable web applications", "Optimized backend performance"],
-    },
-    {
-      id: "2",
-      title: "Frontend Developer",
-      company: "Facebook",
-      duration: "2018 - 2020",
-      bullets: ["Built reusable UI components", "Improved website performance by 40%"],
-    },
-  ]);
-
-  const [showExperienceForm, setShowExperienceForm] = useState(false);
-  const [editingExperience, setEditingExperience] = useState(null);
-  const [newExperience, setNewExperience] = useState({
-    title: "",
-    company: "",
-    duration: "",
-    bullets: "",
-  });
-
-  const addOrUpdateExperience = (e) => {
-    e.preventDefault();
-    if (!newExperience.title || !newExperience.company || !newExperience.duration) return;
-    if (editingExperience) {
-      setExperiences(
-        experiences.map((exp) =>
-          exp.id === editingExperience.id
-            ? {
-                ...newExperience,
-                id: String(exp.id),
-                bullets: newExperience.bullets.split("\n"),
-              }
-            : exp
-        )
-      );
-      setEditingExperience(null);
-    } else {
-      setExperiences([
-        ...experiences,
-        {
-          id: String(Date.now()),
-          ...newExperience,
-          bullets: newExperience.bullets.split("\n"),
-        },
-      ]);
-    }
-    setShowExperienceForm(false);
-    setNewExperience({ title: "", company: "", duration: "", bullets: "" });
-  };
-
-  const removeExperience = (id) =>
-    setExperiences(experiences.filter((exp) => exp.id !== id));
-
-  const [education, setEducation] = useState([
-    {
-      id: "1",
-      degree: "Bachelor of Science in Computer Science",
-      institution: "Harvard University",
-      duration: "2016 - 2020",
-    },
-    {
-      id: "2",
-      degree: "Master of Science in AI",
-      institution: "MIT",
-      duration: "2020 - 2022",
-    },
-  ]);
-
-  const [showEducationForm, setShowEducationForm] = useState(false);
-  const [editingEducation, setEditingEducation] = useState(null);
-  const [newEducation, setNewEducation] = useState({
-    degree: "",
-    institution: "",
-    duration: "",
-  });
-
-  const addOrUpdateEducation = (e) => {
-    e.preventDefault();
-    if (!newEducation.degree || !newEducation.institution || !newEducation.duration) return;
-    if (editingEducation) {
-      setEducation(
-        education.map((edu) =>
-          edu.id === editingEducation.id ? { ...newEducation, id: String(edu.id) } : edu
-        )
-      );
-      setEditingEducation(null);
-    } else {
-      setEducation([...education, { id: String(Date.now()), ...newEducation }]);
-    }
-    setShowEducationForm(false);
-    setNewEducation({ degree: "", institution: "", duration: "" });
-  };
-
-  const removeEducation = (id) =>
-    setEducation(education.filter((edu) => edu.id !== id));
-  const editEducation = (edu) => {
-    setEditingEducation(edu);
-    setNewEducation(edu);
-    setShowEducationForm(true);
-  };
-
-  const [projects, setProjects] = useState([
-    {
-      id: "1",
-      title: "E-commerce Website",
-      description: "Developed a full-stack e-commerce platform with React and Node.js.",
-    },
-    {
-      id: "2",
-      title: "AI Chatbot",
-      description: "Built an AI-powered chatbot for customer service automation.",
-    },
-  ]);
-
-  const [showProjectForm, setShowProjectForm] = useState(false);
-  const [editingProject, setEditingProject] = useState(null);
-  const [newProject, setNewProject] = useState({ title: "", description: "" });
-
-  const addOrUpdateProject = (e) => {
-    e.preventDefault();
-    if (!newProject.title || !newProject.description) return;
-
-    if (editingProject) {
-      setProjects(
-        projects.map((proj) =>
-          proj.id === editingProject.id ? { ...newProject, id: String(proj.id) } : proj
-        )
-      );
-      setEditingProject(null);
-    } else {
-      setProjects([...projects, { id: String(Date.now()), ...newProject }]);
-    }
-
-    setShowProjectForm(false);
-    setNewProject({ title: "", description: "" });
-  };
-
-  const removeProject = (id) =>
-    setProjects(projects.filter((proj) => proj.id !== id));
-  const editProject = (proj) => {
-    setEditingProject(proj);
-    setNewProject(proj);
-    setShowProjectForm(true);
-  };
-
-  const [certifications, setCertifications] = useState([
-    {
-      id: "1",
-      name: "AWS Certified Solutions Architect",
-      organization: "Amazon Web Services",
-      issuedDate: "2023",
-    },
-    {
-      id: "2",
-      name: "Google Cloud Professional Architect",
-      organization: "Google",
-      issuedDate: "2022",
-    },
-  ]);
-
-  const removeCertification = async (id) => {
-    const updatedCertifications = certifications.filter(
-      (cert) => String(cert.id) !== String(id)
-    );
-    setCertifications(updatedCertifications);
-
-    const resumeData = {
-      profileSectionText,
-      experiences,
-      projects,
-      education,
-      certifications: updatedCertifications,
-      skills,
-    };
-    try {
-      await saveResume(resumeData);
-      console.log("Certification removed and saved to backend!");
-    } catch (error) {
-      console.error("Error saving resume after removal:", error);
-      setCertifications(certifications);
-    }
-  };
-
-  const [showCertificationForm, setShowCertificationForm] = useState(false);
-  const [editingCertification, setEditingCertification] = useState(null);
-  const [newCertification, setNewCertification] = useState({
-    title: "",
-    issuer: "",
-    year: "",
-  });
-
-  const addOrUpdateCertification = (e) => {
-    e.preventDefault();
-    if (!newCertification.title || !newCertification.issuer || !newCertification.year) return;
-
-    const formattedCert = {
-      id: String(editingCertification ? editingCertification.id : Date.now()),
-      name: newCertification.title,
-      organization: newCertification.issuer,
-      issuedDate: newCertification.year,
-    };
-
-    if (editingCertification) {
-      setCertifications(
-        certifications.map((cert) =>
-          cert.id === editingCertification.id ? formattedCert : cert
-        )
-      );
-      setEditingCertification(null);
-    } else {
-      setCertifications([...certifications, formattedCert]);
-    }
-
-    setShowCertificationForm(false);
-    setNewCertification({ title: "", issuer: "", year: "" });
-  };
-
-  const [skills, setSkills] = useState([
-    "JavaScript",
-    "React.js",
-    "Tailwind CSS",
-    "Node.js",
-  ]);
-
-  const [showSkillForm, setShowSkillForm] = useState(false);
-  const [newSkill, setNewSkill] = useState("");
-
-  const addSkill = (e) => {
-    e.preventDefault();
-    if (!newSkill.trim()) return;
-    setSkills([...skills, newSkill.trim()]);
-    setNewSkill("");
-    setShowSkillForm(false);
-  };
-
-  const removeSkill = (skill) => setSkills(skills.filter((s) => s !== skill));
-
-  useEffect(() => {
-    const getResumeData = async () => {
-      const data = await fetchResume();
-      if (data) {
-        setProfileSectionText(data.profile || profileSectionText);
-        setExperiences(data.experiences || experiences);
-        setProjects(data.projects || projects);
-        setEducation(data.education || education);
-        setCertifications(
-          data.certifications && data.certifications.length > 0
-            ? data.certifications
-            : certifications
-        );
-        setSkills(data.skills || skills);
-      }
-    };
-    getResumeData();
-  }, []);
+  const HeaderButtons = () => (
+    <div className="control-buttons flex gap-2 absolute right-0 top-0 bg-white/90 p-2 rounded-lg shadow-md">
+      {editingHeader ? (
+        <button
+          onClick={() => {
+            setEditingHeader(false);
+            setShowSuccessMessage(true);
+            setTimeout(() => setShowSuccessMessage(false), 3000);
+          }}
+          className="text-green-600 hover:text-green-800"
+          title="Save header"
+        >
+          <Save size={18} />
+        </button>
+      ) : (
+        <>
+          <button
+            onClick={() => setEditingHeader(true)}
+            className="text-blue-600 hover:text-blue-800"
+            title="Edit header"
+          >
+            <Edit size={18} />
+          </button>
+          <button
+            onClick={() => handleDelete('header')}
+            className="text-red-600 hover:text-red-800"
+            title="Delete header"
+          >
+            <Trash2 size={18} />
+          </button>
+        </>
+      )}
+    </div>
+  );
 
   return (
-    <div id="resume-container" className="min-h-screen flex bg-white no-print">
-      <Sidebar
-        onSave={handleSaveResume}
-        onEnhance={handleEnhance}
-        onDownload={handleDownloadPDF}
-      />
-
-      <div
-        ref={resumeRef}
-        className="main-content flex-1 transition-all duration-300 ease-in-out p-4 lg:p-8 bg-white shadow-lg border border-gray-200 max-w-4xl mx-auto lg:ml-64"
-      >
-        <header className="text-center mb-8">
-          <div
-            contentEditable
-            suppressContentEditableWarning
-            className="text-4xl font-bold w-full outline-none text-left lg:text-center"
-            onBlur={(e) => setName(e.target.innerText)}
-          >
-            {name}
+    <div className="flex w-full min-h-screen">
+      {isLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-lg">
+            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+            <p className="text-lg font-semibold text-gray-700">Processing...</p>
           </div>
-          <div
-            contentEditable
-            suppressContentEditableWarning
-            className="text-xl text-gray-600 w-full outline-none text-left lg:text-center"
-            onBlur={(e) => setHeaderProfile(e.target.innerText)}
-          >
-            {headerProfile}
-          </div>
-          <div
-            contentEditable
-            suppressContentEditableWarning
-            className="text-lg text-gray-500 w-full outline-none text-left lg:text-center"
-            onBlur={(e) => setContact(e.target.innerText)}
-          >
-            {contact}
-          </div>
-        </header>
+        </div>
+      )}
 
-        <section className="mb-8">
-          <h2 className="text-2xl font-extrabold border-b-4 border-black pb-2">
-            PROFILE
-          </h2>
-          {loadingSection === "profile" ? (
-            <p>Enhancing...</p>
-          ) : (
-            <div
-              contentEditable
-              suppressContentEditableWarning
-              className="text-gray-700 mt-2 outline-none"
-              onBlur={(e) => setProfileSectionText(e.target.innerText)}
-            >
-              {profileSectionText}
-            </div>
-          )}
-        </section>
-
-        <section className="mb-8">
-          <h2 className="text-xl font-bold border-b-4 border-black pb-2">
-            EXPERIENCE
-          </h2>
-          {experiences.map((exp, index) => (
-            <div key={exp.id || `exp-${index}`} className="mt-4">
-              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center">
-                <div contentEditable suppressContentEditableWarning className="outline-none w-full">
-                  <h3 className="text-lg font-semibold">{exp.title}</h3>
-                  <p className="text-gray-500">{exp.company} | {exp.duration}</p>
-                  <ul className="list-disc list-inside text-gray-700 mt-2 ml-4">
-                    {loadingSection === "experience" ? (
-                      <p>Enhancing...</p>
-                    ) : (
-                      exp.bullets.map((point, i) => (
-                        <li key={`bullet-${exp.id || index}-${i}`}>{point}</li>
-                      ))
-                    )}
-                  </ul>
-                </div>
-                {!hideButtons && (
-                  <div className="flex space-x-2 mt-2 lg:mt-0">
-                    <button
-                      onClick={() => {
-                        setEditingExperience(exp);
-                        setNewExperience({
-                          title: exp.title,
-                          company: exp.company,
-                          duration: exp.duration,
-                          bullets: exp.bullets.join("\n"),
-                        });
-                        setShowExperienceForm(true);
-                      }}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => removeExperience(exp.id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {!hideButtons && (
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={() => setShowExperienceForm(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded mt-4"
-              >
-                Add Experience
-              </button>
-            </div>
-          )}
-        </section>
-
-        {showExperienceForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-md w-11/12 max-w-md">
-              <h2 className="text-xl font-bold mb-4">
-                {editingExperience ? "Edit Experience" : "Add New Experience"}
-              </h2>
-              <form onSubmit={addOrUpdateExperience} className="grid gap-4">
-                <input
-                  type="text"
-                  name="title"
-                  value={newExperience.title}
-                  onChange={(e) =>
-                    setNewExperience({ ...newExperience, title: e.target.value })
-                  }
-                  placeholder="Title"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <input
-                  type="text"
-                  name="company"
-                  value={newExperience.company}
-                  onChange={(e) =>
-                    setNewExperience({ ...newExperience, company: e.target.value })
-                  }
-                  placeholder="Company"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <input
-                  type="text"
-                  name="duration"
-                  value={newExperience.duration}
-                  onChange={(e) =>
-                    setNewExperience({ ...newExperience, duration: e.target.value })
-                  }
-                  placeholder="Duration"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <textarea
-                  name="bullets"
-                  value={newExperience.bullets}
-                  onChange={(e) =>
-                    setNewExperience({ ...newExperience, bullets: e.target.value })
-                  }
-                  placeholder="Bullet points (separate by new line)"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                ></textarea>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowExperienceForm(false)}
-                    className="bg-gray-400 text-white px-4 py-2 rounded"
-                  >
-                    Cancel
+      {/* Desktop Sidebar */}
+      <div className="w-64 bg-gray-900 text-white p-4 h-screen sticky top-0 overflow-y-auto md:flex md:flex-col gap-4 hidden">
+        <button className="bg-blue-500 p-2 rounded flex items-center justify-center gap-2" onClick={() => setIsRearrangeMode(!isRearrangeMode)}>
+          <Settings size={18} /> {isRearrangeMode ? "Done Rearranging" : "Rearrange Sections"}
+        </button>
+        {isRearrangeMode && (
+          <div className="bg-gray-800 p-3 rounded mt-2">
+            <h3 className="text-sm font-semibold mb-2 text-left">Rearrange resume sections</h3>
+            {sections.map((section, index) => (
+              <div key={section} className="flex items-center justify-between p-2 my-1 border border-gray-700 rounded bg-gray-850 hover:bg-gray-750">
+                <span className="capitalize">{section}</span>
+                <div className="flex gap-1">
+                  <button className="p-1 rounded hover:bg-gray-700 disabled:opacity-50" onClick={() => moveSection(index, "up")} disabled={index === 0}>
+                    <ArrowUp size={16} />
                   </button>
-                  <button
-                    type="submit"
-                    className="bg-green-600 text-white px-4 py-2 rounded"
-                  >
-                    {editingExperience ? "Update" : "Add"}
+                  <button className="p-1 rounded hover:bg-gray-700 disabled:opacity-50" onClick={() => moveSection(index, "down")} disabled={index === sections.length - 1}>
+                    <ArrowDown size={16} />
                   </button>
                 </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        <section className="mb-8">
-          <h2 className="text-xl font-bold border-b-4 border-black pb-2">
-            EDUCATION
-          </h2>
-          {education.map((edu, index) => (
-            <div key={edu.id || `edu-${index}`} className="mt-4">
-              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center">
-                <div contentEditable suppressContentEditableWarning className="outline-none w-full">
-                  <p className="font-semibold">{edu.degree}</p>
-                  <p className="text-gray-500">{edu.institution} | {edu.duration}</p>
-                </div>
-                {!hideButtons && (
-                  <div className="flex space-x-2 mt-2 lg:mt-0">
-                    <button
-                      onClick={() => editEducation(edu)}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => removeEducation(edu.id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {!hideButtons && (
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={() => setShowEducationForm(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded mt-4"
-              >
-                Add Education
-              </button>
-            </div>
-          )}
-        </section>
-
-        {showEducationForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-md w-11/12 max-w-md">
-              <h2 className="text-xl font-bold mb-4">
-                {editingEducation ? "Edit Education" : "Add New Education"}
-              </h2>
-              <form onSubmit={addOrUpdateEducation} className="grid gap-4">
-                <input
-                  type="text"
-                  name="degree"
-                  value={newEducation.degree}
-                  onChange={(e) =>
-                    setNewEducation({ ...newEducation, degree: e.target.value })
-                  }
-                  placeholder="Degree"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <input
-                  type="text"
-                  name="institution"
-                  value={newEducation.institution}
-                  onChange={(e) =>
-                    setNewEducation({ ...newEducation, institution: e.target.value })
-                  }
-                  placeholder="Institution"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <input
-                  type="text"
-                  name="duration"
-                  value={newEducation.duration}
-                  onChange={(e) =>
-                    setNewEducation({ ...newEducation, duration: e.target.value })
-                  }
-                  placeholder="Duration"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowEducationForm(false)}
-                    className="bg-gray-400 text-white px-4 py-2 rounded"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-green-600 text-white px-4 py-2 rounded"
-                  >
-                    {editingEducation ? "Update" : "Add"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        <section className="mb-8">
-          <h2 className="text-xl font-bold border-b-4 border-black pb-2">
-            PROJECTS
-          </h2>
-          {projects.map((proj, index) => (
-            <div key={proj.id || `proj-${index}`} className="mt-4">
-              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center">
-                <div contentEditable suppressContentEditableWarning className="outline-none w-full">
-                  <p className="font-semibold">{proj.title}</p>
-                  <p className="text-gray-500">{proj.description}</p>
-                </div>
-                {!hideButtons && (
-                  <div className="flex space-x-2 mt-2 lg:mt-0">
-                    <button
-                      onClick={() => editProject(proj)}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => removeProject(proj.id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {!hideButtons && (
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={() => setShowProjectForm(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded mt-4"
-              >
-                Add Project
-              </button>
-            </div>
-          )}
-        </section>
-
-        {showProjectForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-md w-11/12 max-w-md">
-              <h2 className="text-xl font-bold mb-4">
-                {editingProject ? "Edit Project" : "Add New Project"}
-              </h2>
-              <form onSubmit={addOrUpdateProject} className="grid gap-4">
-                <input
-                  type="text"
-                  name="title"
-                  value={newProject.title}
-                  onChange={(e) =>
-                    setNewProject({ ...newProject, title: e.target.value })
-                  }
-                  placeholder="Project Title"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <textarea
-                  name="description"
-                  value={newProject.description}
-                  onChange={(e) =>
-                    setNewProject({ ...newProject, description: e.target.value })
-                  }
-                  placeholder="Project Description"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                ></textarea>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowProjectForm(false)}
-                    className="bg-gray-400 text-white px-4 py-2 rounded"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-green-600 text-white px-4 py-2 rounded"
-                  >
-                    {editingProject ? "Update" : "Add"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        <section className="mb-8">
-          <h2 className="text-xl font-bold border-b-4 border-black pb-2">
-            CERTIFICATIONS
-          </h2>
-          {certifications.map((cert, index) => (
-            <div key={cert.id || `cert-${index}`} className="mt-4">
-              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center">
-                <div contentEditable suppressContentEditableWarning className="outline-none w-full">
-                  <p className="font-semibold">{cert.name}</p>
-                  <p className="text-gray-500">
-                    {cert.organization} | {cert.issuedDate}
-                  </p>
-                </div>
-                {!hideButtons && (
-                  <div className="flex space-x-2 mt-2 lg:mt-0">
-                    <button
-                      onClick={() => {
-                        setEditingCertification(cert);
-                        setNewCertification({
-                          title: cert.name,
-                          issuer: cert.organization,
-                          year: cert.issuedDate,
-                        });
-                        setShowCertificationForm(true);
-                      }}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => removeCertification(cert.id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {!hideButtons && (
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={() => setShowCertificationForm(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center justify-center"
-              >
-                Add New Certification
-              </button>
-            </div>
-          )}
-        </section>
-
-        {showCertificationForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-md w-11/12 max-w-md">
-              <h2 className="text-xl font-bold mb-4">
-                {editingCertification ? "Edit Certification" : "Add New Certification"}
-              </h2>
-              <form onSubmit={addOrUpdateCertification} className="grid gap-4">
-                <input
-                  type="text"
-                  name="title"
-                  value={newCertification.title}
-                  onChange={(e) =>
-                    setNewCertification({ ...newCertification, title: e.target.value })
-                  }
-                  placeholder="Certification Title"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <input
-                  type="text"
-                  name="issuer"
-                  value={newCertification.issuer}
-                  onChange={(e) =>
-                    setNewCertification({ ...newCertification, issuer: e.target.value })
-                  }
-                  placeholder="Issuing Organization"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <input
-                  type="text"
-                  name="year"
-                  value={newCertification.year}
-                  onChange={(e) =>
-                    setNewCertification({ ...newCertification, year: e.target.value })
-                  }
-                  placeholder="Year of Certification"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowCertificationForm(false)}
-                    className="bg-gray-400 text-white px-4 py-2 rounded"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-green-600 text-white px-4 py-2 rounded"
-                  >
-                    {editingCertification ? "Update" : "Add"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        <section className="mb-8">
-          <h2 className="text-xl font-bold border-b-4 border-black pb-2">
-            SKILLS
-          </h2>
-          <div className="flex flex-wrap gap-2 mt-4">
-            {skills.map((skill) => (
-              <div
-                key={skill}
-                className="flex items-center bg-skyblue-500 text-black px-3 py-1 rounded-lg"
-              >
-                <span contentEditable suppressContentEditableWarning className="">
-                  {skill}
-                </span>
-                {!hideButtons && (
-                  <button
-                    onClick={() => removeSkill(skill)}
-                    className="ml-2 text-black bg-600 w-5 h-5 flex items-center justify-center text-xs"
-                  >
-                    ✕
-                  </button>
-                )}
               </div>
             ))}
           </div>
-          {!hideButtons && (
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={() => setShowSkillForm(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center justify-center"
-              >
-                Add Skill
-              </button>
-            </div>
-          )}
-        </section>
-
-        {showSkillForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-md w-11/12 max-w-md">
-              <h2 className="text-xl font-bold mb-4">Add New Skill</h2>
-              <form onSubmit={addSkill} className="grid gap-4">
-                <input
-                  type="text"
-                  value={newSkill}
-                  onChange={(e) => setNewSkill(e.target.value)}
-                  placeholder="Skill Name"
-                  className="border px-3 py-2 rounded w-full mb-2"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowSkillForm(false)}
-                    className="bg-gray-400 text-white px-4 py-2 rounded"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-green-600 text-white px-4 py-2 rounded"
-                  >
-                    Add
-                  </button>
-                </div>
-              </form>
-            </div>
+        )}
+        <button className="bg-green-500 p-2 rounded flex items-center gap-2" onClick={handleAIEnhancement}>
+          <Bot size={18} /> AI Assistant
+        </button>
+        {showEnhancementOptions && (
+          <div className="bg-gray-800 p-3 rounded mt-2">
+            <h4 className="text-sm font-semibold mb-2 text-left">Enhance Specific Field</h4>
+            <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("summary")}>
+              Enhance Summary
+            </button>
+            <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("experience")}>
+              Enhance Experience
+            </button>
+            <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("achievements")}>
+              Enhance Achievements
+            </button>
+            <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("projects")}>
+              Enhance Projects
+            </button>
           </div>
+        )}
+        <button className="bg-orange-500 p-2 rounded flex items-center gap-2" onClick={downloadPdf}>
+          <Download size={18} /> Download
+        </button>
+        <button className="bg-gray-700 p-2 rounded flex items-center gap-2" onClick={handleShare}>
+          <Share size={18} /> Share
+        </button>
+        <label htmlFor="uploadResume" className="bg-blue-600 p-2 rounded flex items-center gap-2 cursor-pointer">
+          <Upload size={18} /> Upload Resume
+        </label>
+        <input id="uploadResume" type="file" className="hidden" />
+      </div>
+
+      {/* Mobile Menu (Moved to Left Sidebar) */}
+      <div className="md:hidden">
+        <button
+          className="fixed top-4 left-4 z-50 p-2 bg-gray-900 text-white rounded-md"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        >
+          {isMobileMenuOpen ? '✕' : '≡'}
+        </button>
+
+        {isMobileMenuOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-black bg-opacity-50"
+              onClick={() => setIsMobileMenuOpen(false)}
+            ></div>
+            <div
+              className="fixed top-0 left-0 h-full w-64 bg-gray-900 text-white p-4 transition-transform duration-300 ease-in-out z-50 transform"
+              style={{ transform: isMobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)' }}
+            >
+              <button
+                className="absolute top-3 right-3 text-white"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                ✕
+              </button>
+              <div className="flex flex-col gap-4 mt-12">
+                <button className="bg-blue-500 p-2 rounded flex items-center justify-start gap-2" onClick={() => setIsRearrangeMode(!isRearrangeMode)}>
+                  <Settings size={18} /> {isRearrangeMode ? "Done Rearranging" : "Rearrange Sections"}
+                </button>
+                {isRearrangeMode && (
+                  <div className="bg-gray-800 p-3 rounded">
+                    <h3 className="text-sm font-semibold mb-2 text-left">Rearrange Sections</h3>
+                    {sections.map((section, index) => (
+                      <div key={section} className="flex items-center justify-between p-2 my-1 border border-gray-700 rounded bg-gray-850 hover:bg-gray-750">
+                        <span className="capitalize">{section}</span>
+                        <div className="flex gap-1">
+                          <button className="p-1 rounded hover:bg-gray-700 disabled:opacity-50" onClick={() => moveSection(index, "up")} disabled={index === 0}>
+                            <ArrowUp size={16} />
+                          </button>
+                          <button className="p-1 rounded hover:bg-gray-700 disabled:opacity-50" onClick={() => moveSection(index, "down")} disabled={index === sections.length - 1}>
+                            <ArrowDown size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button className="bg-green-500 p-2 rounded flex items-center justify-start gap-2" onClick={handleAIEnhancement}>
+                  <Bot size={18} /> AI Assistant
+                </button>
+                {showEnhancementOptions && (
+                  <div className="bg-gray-800 p-3 rounded">
+                    <h4 className="text-sm font-semibold mb-2 text-left">Enhance Specific Field</h4>
+                    <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("summary")}>
+                      Enhance Summary
+                    </button>
+                    <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("experience")}>
+                      Enhance Experience
+                    </button>
+                    <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("achievements")}>
+                      Enhance Achievements
+                    </button>
+                    <button className="w-full bg-gray-700 p-2 mb-2 rounded hover:bg-gray-600 text-left" onClick={() => enhanceSingleField("projects")}>
+                      Enhance Projects
+                    </button>
+                  </div>
+                )}
+                <button className="bg-orange-500 p-2 rounded flex items-center justify-start gap-2" onClick={downloadPdf}>
+                  <Download size={18} /> Download
+                </button>
+                <button className="bg-gray-700 p-2 rounded flex items-center justify-start gap-2" onClick={handleShare}>
+                  <Share size={18} /> Share
+                </button>
+                <label htmlFor="uploadResumeMobile" className="bg-blue-600 p-2 rounded flex items-center justify-start gap-2 cursor-pointer">
+                  <Upload size={18} /> Upload Resume
+                </label>
+                <input id="uploadResumeMobile" type="file" className="hidden" />
+              </div>
+            </div>
+          </>
         )}
       </div>
 
+      {/* Main Content */}
+      <div className="flex-1 p-4 md:p-8 overflow-y-auto">
+        <div className="max-w-4xl mx-auto bg-white" ref={resumeRef}>
+          {showSuccessMessage && <SuccessMessage />}
+          
+          {sections.map((sectionName) => {
+            switch (sectionName) {
+              case 'header':
+                return editableContent.header && (
+                  <header key={sectionName} className="mb-8 relative">
+                    <HeaderButtons />
+                    <div className="flex flex-col md:flex-row justify-between w-full gap-4">
+                      <div className="flex-1">
+                        {editingHeader ? (
+                          <>
+                            <input
+                              className="text-3xl font-bold w-full mb-2 p-1 border rounded"
+                              value={editableContent.header.name}
+                              onChange={(e) => handleContentChange('header', e.target.value, 'name')}
+                            />
+                            <input
+                              className="text-lg text-gray-600 w-full p-1 border rounded"
+                              value={editableContent.header.title}
+                              onChange={(e) => handleContentChange('header', e.target.value, 'title')}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <h1 className="text-3xl font-bold">{editableContent.header.name}</h1>
+                            <p className="text-lg text-gray-600">{editableContent.header.title}</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="text-gray-600 text-sm">
+                        {editingHeader ? (
+                          <>
+                            <input
+                              className="block w-full mb-1 p-1 border rounded"
+                              value={editableContent.header.contact.phone}
+                              onChange={(e) => handleContentChange('header', e.target.value, 'phone')}
+                            />
+                            <input
+                              className="block w-full mb-1 p-1 border rounded"
+                              value={editableContent.header.contact.email}
+                              onChange={(e) => handleContentChange('header', e.target.value, 'email')}
+                            />
+                            <input
+                              className="block w-full p-1 border rounded"
+                              value={editableContent.header.contact.location}
+                              onChange={(e) => handleContentChange('header', e.target.value, 'location')}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <div>{editableContent.header.contact.phone}</div>
+                            <div className="flex items-center gap-2">
+                              <Mail size={16} /> {editableContent.header.contact.email}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                              </svg>
+                              {editableContent.header.contact.location}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </header>
+                );
+
+              case 'summary':
+                return editableContent.summary && (
+                  <section key={sectionName} className="mb-8 relative">
+                    <h2 className="text-2xl font-bold mb-4">Summary</h2>
+                    <div className="border-b border-gray-300 mb-8"></div>
+                    <SectionButtons section="summary" />
+                    {editingSections.summary ? (
+                      <textarea
+                        className="w-full p-2 border rounded"
+                        value={editableContent.summary}
+                        onChange={(e) => handleContentChange('summary', e.target.value)}
+                        rows={4}
+                      />
+                    ) : (
+                      <p className="text-gray-700">{editableContent.summary}</p>
+                    )}
+                  </section>
+                );
+
+              case 'experience':
+                return (
+                  <section key={sectionName} className="mb-8 relative">
+                    <h2 className="text-2xl font-bold mb-6">Experience</h2>
+                    <div className="border-b border-gray-300 mb-8"></div>
+                    <SectionButtons section="experience" />
+                    {editableContent.experience.map((exp) => (
+                      <div key={exp.id} className="mb-6 relative border p-4 rounded">
+                        <div className="flex flex-col md:flex-row justify-between items-start mb-2">
+                          {editingSections.experience ? (
+                            <>
+                              <input
+                                className="text-xl font-semibold border rounded px-2 mb-2 w-full"
+                                value={exp.title}
+                                onChange={(e) => handleContentChange('experience', e.target.value, 'title', exp.id)}
+                              />
+                              <input
+                                className="text-gray-600 border rounded px-2 w-full md:w-auto"
+                                value={exp.period}
+                                onChange={(e) => handleContentChange('experience', e.target.value, 'period', exp.id)}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <h3 className="text-xl font-semibold">{exp.title}</h3>
+                              <span className="text-gray-600">{exp.period}</span>
+                            </>
+                          )}
+                        </div>
+                        {editingSections.experience ? (
+                          <textarea
+                            className="w-full p-2 border rounded mt-2"
+                            value={exp.description}
+                            onChange={(e) => handleContentChange('experience', e.target.value, 'description', exp.id)}
+                            rows={3}
+                          />
+                        ) : (
+                          <p className="text-gray-700">{exp.description}</p>
+                        )}
+                        <button
+                          onClick={() => handleDelete('experience', exp.id)}
+                          className="absolute top-2 right-2 text-red-600 hover:text-red-800"
+                          title="Delete this experience"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </section>
+                );
+
+              case 'achievements':
+                return (
+                  <section key={sectionName} className="mb-8 relative">
+                    <h2 className="text-2xl font-bold mb-4">Achievements</h2>
+                    <div className="border-b border-gray-300 mb-8"></div>
+                    <SectionButtons section="achievements" />
+                    {editableContent.achievements.map((achievement) => (
+                      <div key={achievement.id} className="mb-4 relative border p-4 rounded">
+                        <div className="flex flex-col md:flex-row justify-between items-start mb-2">
+                          {editingSections.achievements ? (
+                            <>
+                              <input
+                                className="text-xl font-semibold border rounded px-2 mb-2 w-full"
+                                value={achievement.title}
+                                onChange={(e) => handleContentChange('achievements', e.target.value, 'title', achievement.id)}
+                              />
+                              <input
+                                className="text-gray-600 border rounded px-2 w-full md:w-auto"
+                                value={achievement.year}
+                                onChange={(e) => handleContentChange('achievements', e.target.value, 'year', achievement.id)}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <h3 className="text-xl font-semibold">{achievement.title}</h3>
+                              <span className="text-gray-600">{achievement.year}</span>
+                            </>
+                          )}
+                        </div>
+                        {editingSections.achievements ? (
+                          <textarea
+                            className="w-full p-2 border rounded mt-2"
+                            value={achievement.description}
+                            onChange={(e) => handleContentChange('achievements', e.target.value, 'description', achievement.id)}
+                            rows={2}
+                          />
+                        ) : (
+                          <p className="text-gray-700">{achievement.description}</p>
+                        )}
+                        <button
+                          onClick={() => handleDelete('achievements', achievement.id)}
+                          className="absolute top-2 right-2 text-red-600 hover:text-red-800"
+                          title="Delete this achievement"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </section>
+                );
+
+              case 'projects':
+                return (
+                  <section key={sectionName} className="mb-8 relative">
+                    <h2 className="text-2xl font-bold mb-4">Projects</h2>
+                    <div className="border-b border-gray-300 mb-8"></div>
+                    <SectionButtons section="projects" />
+                    {editableContent.projects.map((project) => (
+                      <div key={project.id} className="mb-6 relative border p-4 rounded">
+                        <div className="flex flex-col md:flex-row justify-between items-start mb-2">
+                          {editingSections.projects ? (
+                            <>
+                              <input
+                                className="text-xl font-semibold border rounded px-2 mb-2 w-full"
+                                value={project.title}
+                                onChange={(e) => handleContentChange('projects', e.target.value, 'title', project.id)}
+                              />
+                              <input
+                                className="text-gray-600 border rounded px-2 w-full md:w-auto"
+                                value={project.year}
+                                onChange={(e) => handleContentChange('projects', e.target.value, 'year', project.id)}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <h3 className="text-xl font-semibold">{project.title}</h3>
+                              <span className="text-gray-600">{project.year}</span>
+                            </>
+                          )}
+                        </div>
+                        {editingSections.projects ? (
+                          <>
+                            <textarea
+                              className="w-full p-2 border rounded mt-2 mb-2"
+                              value={project.description}
+                              onChange={(e) => handleContentChange('projects', e.target.value, 'description', project.id)}
+                              rows={3}
+                            />
+                            <input
+                              className="w-full p-2 border rounded"
+                              value={project.technologies}
+                              onChange={(e) => handleContentChange('projects', e.target.value, 'technologies', project.id)}
+                              placeholder="Technologies used"
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-gray-700">{project.description}</p>
+                            <p className="text-gray-600 mt-2"><span className="font-medium">Technologies:</span> {project.technologies}</p>
+                          </>
+                        )}
+                        <button
+                          onClick={() => handleDelete('projects', project.id)}
+                          className="absolute top-2 right-2 text-red-600 hover:text-red-800"
+                          title="Delete this project"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </section>
+                );
+
+              case 'education':
+                return (
+                  <section key={sectionName} className="mb-8 relative">
+                    <h2 className="text-2xl font-bold mb-4">Education</h2>
+                    <div className="border-b border-gray-300 mb-8"></div>
+                    <SectionButtons section="education" />
+                    {editableContent.education.map((edu) => (
+                      <div key={edu.id} className="mb-4 relative border p-4 rounded">
+                        <div className="flex flex-col md:flex-row justify-between items-start">
+                          <div className="flex-1">
+                            {editingSections.education ? (
+                              <>
+                                <input
+                                  className="text-xl font-semibold border rounded px-2 mb-2 w-full"
+                                  value={edu.school}
+                                  onChange={(e) => handleContentChange('education', e.target.value, 'school', edu.id)}
+                                />
+                                <input
+                                  className="text-gray-700 border rounded px-2 w-full"
+                                  value={edu.degree}
+                                  onChange={(e) => handleContentChange('education', e.target.value, 'degree', edu.id)}
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <h3 className="text-xl font-semibold">{edu.school}</h3>
+                                <p className="text-gray-700">{edu.degree}</p>
+                              </>
+                            )}
+                          </div>
+                          {editingSections.education ? (
+                            <input
+                              className="text-gray-600 border rounded px-2 w-full md:w-auto mt-2 md:mt-0"
+                              value={edu.period}
+                              onChange={(e) => handleContentChange('education', e.target.value, 'period', edu.id)}
+                            />
+                          ) : (
+                            <span className="text-gray-600">{edu.period}</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDelete('education', edu.id)}
+                          className="absolute top-2 right-2 text-red-600 hover:text-red-800"
+                          title="Delete this education"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </section>
+                );
+
+              case 'skills':
+                return editableContent.skills && (
+                  <section key={sectionName} className="mb-8 relative">
+                    <h2 className="text-2xl font-bold mb-4">Skills</h2>
+                    <div className="border-b border-gray-300 mb-8"></div>
+                    <SectionButtons section="skills" />
+                    {editingSections.skills ? (
+                      <>
+                        {editableContent.skills.clientSide && (
+                          <div className="mb-4 flex items-center gap-2">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold mb-2">Client-Side:</h3>
+                              <input
+                                className="w-full p-2 border rounded"
+                                value={editableContent.skills.clientSide}
+                                onChange={(e) => handleContentChange('skills', e.target.value, 'clientSide')}
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleDelete('skills', null, 'clientSide')}
+                              className="text-red-600 hover:text-red-800 mt-6"
+                              title="Delete Client-Side Skills"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        )}
+                        {editableContent.skills.serverSide && (
+                          <div className="mb-4 flex items-center gap-2">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold mb-2">Server-Side:</h3>
+                              <input
+                                className="w-full p-2 border rounded"
+                                value={editableContent.skills.serverSide}
+                                onChange={(e) => handleContentChange('skills', e.target.value, 'serverSide')}
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleDelete('skills', null, 'serverSide')}
+                              className="text-red-600 hover:text-red-800 mt-6"
+                              title="Delete Server-Side Skills"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        )}
+                        {editableContent.skills.devOps && (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold mb-2">Development & Operations:</h3>
+                              <input
+                                className="w-full p-2 border rounded"
+                                value={editableContent.skills.devOps}
+                                onChange={(e) => handleContentChange('skills', e.target.value, 'devOps')}
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleDelete('skills', null, 'devOps')}
+                              className="text-red-600 hover:text-red-800 mt-6"
+                              title="Delete DevOps Skills"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {editableContent.skills.clientSide && (
+                          <div className="mb-4">
+                            <h3 className="text-lg font-semibold mb-2">Client-Side:</h3>
+                            <p className="text-gray-700">{editableContent.skills.clientSide}</p>
+                          </div>
+                        )}
+                        {editableContent.skills.serverSide && (
+                          <div className="mb-4">
+                            <h3 className="text-lg font-semibold mb-2">Server-Side:</h3>
+                            <p className="text-gray-700">{editableContent.skills.serverSide}</p>
+                          </div>
+                        )}
+                        {editableContent.skills.devOps && (
+                          <div>
+                            <h3 className="text-lg font-semibold mb-2">Development & Operations:</h3>
+                            <p className="text-gray-700">{editableContent.skills.devOps}</p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </section>
+                );
+
+              default:
+                return null;
+            }
+          })}
+        </div>
+      </div>
+
       <style jsx>{`
-  .main-content {
-    width: 100%;
-    transition: margin-left 0.3s ease-in-out;
-    padding: 1rem; /* Base padding for mobile */
-    font-size: 12pt; /* Standard ATS-friendly font size */
-  }
-
-  h1, h2, h3 {
-    font-size: 14pt; /* Standard ATS-friendly heading size */
-    font-weight: bold;
-  }
-
-  @media (max-width: 1023px) {
-    .main-content {
-      margin-left: 0 !important; /* No offset on mobile when sidebar is hidden */
-      padding: 1rem;
-    }
-    .max-w-4xl {
-      max-width: 100%;
-    }
-    .text-center {
-      text-align: left !important; /* Left-align text on mobile */
-    }
-    .flex {
-      flex-direction: column !important; /* Stack items vertically on mobile */
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .main-content {
-      margin-left: 16rem !important; /* Matches sidebar width (w-64 = 16rem) */
-      padding: 2rem; /* Larger padding on desktop */
-    }
-  }
-
-  @media print {
-    .no-print {
-      display: none;
-    }
-  }
-`}</style>
-</div>
-);
+        @media (max-width: 768px) {
+          .flex {
+            flex-direction: column;
+          }
+          .max-w-4xl {
+            max-width: 100%;
+            padding: 1rem;
+          }
+          header .flex {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .text-right {
+            text-align: left !important;
+          }
+          .control-buttons {
+            right: 1rem;
+            top: 0.5rem;
+          }
+        }
+        @media print {
+          .control-buttons {
+            display: none !important;
+          }
+        }
+      `}</style>
+    </div>
+  );
 }
-

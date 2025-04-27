@@ -7,9 +7,10 @@ const connectToMongo = require("./config/resumedb");
 const { errorHandler } = require("./utils/errorHandler");
 const resumeRoutes = require("./routes/resumeRoutes");
 const resumeRoutes1 = require("./routes/resumeRoutes1");
+const temp3Routes = require("./routes/temp3Routes");
 const temp4Routes = require("./routes/temp4Routes");
-const temp4Routes = require("./routes/temp5Routes");
-const temp4Routes = require("./routes/temp6Routes");
+const temp5Routes = require("./routes/temp5Routes");
+const temp6Routes = require("./routes/temp6Routes");
 const User = require("./models/User");
 
 const app = express();
@@ -28,6 +29,7 @@ app.use(express.static(path.join(__dirname, "public")));
 // ✅ Register Resume Routes
 app.use("/api/resume", resumeRoutes);
 app.use("/api/resume1", resumeRoutes1);
+app.use("/api/temp3", temp3Routes);
 app.use("/api/temp4", temp4Routes);
 app.use("/api/temp5", temp5Routes);
 app.use("/api/temp6", temp6Routes);

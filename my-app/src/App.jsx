@@ -9,6 +9,7 @@ import './App.css'
 import WithoutAi from './components/templatePage';
 import ResumeEditor from './components/resumeEditor';
 import Temp2 from './components/Temp2';
+import Temp3 from './components/Temp3';
 import Temp4 from './components/Temp4';
 import Temp5 from './components/Temp5';
 import Temp6 from './components/Temp6';
@@ -28,6 +29,7 @@ function App() {
          <Route exact path='/templatepage' element={<WithoutAi />} />
           <Route exact path='/temp1' element={<ResumeEditor/>} />
           <Route exact path='/temp2' element={<Temp2/>} />
+          <Route exact path='/temp3' element={<Temp3/>} />
           <Route exact path='/temp4' element={<Temp4/>} />
           <Route exact path='/temp5' element={<Temp5/>} />
           <Route exact path='/temp6' element={<Temp6/>} />

@@ -1,7 +1,7 @@
 // temp6Controller.js
 require("dotenv").config();
 const puppeteer = require("puppeteer");
-const ResumeEditorModern = require("./models/temp6Model");
+const ResumeEditorModern = require("../models/temp6Model");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
