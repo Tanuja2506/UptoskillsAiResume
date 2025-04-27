@@ -198,7 +198,7 @@ const ResumeEditor = () => {
           headers: { 'Content-Type': 'application/json' },
         }
       );
-      if (!response.data instanceof Blob)
+      if (!(response.data instanceof Blob))
         throw new Error('Invalid PDF response');
       const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
