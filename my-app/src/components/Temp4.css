@@ -1,0 +1,58 @@
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 20rem !important; /* Enforce width */
+    min-width: 20rem !important; /* Enforce minimum width */
+    background: linear-gradient(to bottom, #facc15, #fb923c, #a855f7);
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    z-index: 50; /* Ensure it stays above other elements */
+    outline: 1px solid red; /* Debugging: Add a red border to see the sidebar boundaries */
+  }
+  
+  /* When Sidebar is Open */
+  .sidebar.show {
+    transform: translateX(0);
+  }
+  
+  /* Ensure Main Content Moves When Sidebar is Visible */
+  .main-content {
+    transition: margin-left 0.3s ease-in-out;
+  }
+  
+  /* On Large Screens, Sidebar is Always Visible */
+  @media (min-width: 1024px) {
+    .sidebar {
+      transform: translateX(0) !important;
+    }
+    .main-content {
+      margin-left: 1rem !important;
+    }
+  }
+  
+  /* Resume List Styling */
+  .resume-list {
+    list-style-type: disc;
+    margin-left: 20px; /* Indent the list */
+  }
+  
+  /* Style for list items in Key Skills and Achievements */
+  .resume-list li {
+    margin-bottom: 8px; /* Space between items */
+    padding-left: 8px; /* Space between bullet and text */
+  }
+  
+  /* Nested list for achievement details */
+  .resume-list ul {
+    list-style-type: circle; /* Different bullet style for nested list */
+    margin-left: 20px; /* Further indent nested list */
+    margin-top: 4px; /* Small space above nested list */
+  }
+  
+  /* Ensure nested list items are styled consistently */
+  .resume-list ul li {
+    margin-bottom: 4px; /* Smaller spacing for nested items */
+  }
